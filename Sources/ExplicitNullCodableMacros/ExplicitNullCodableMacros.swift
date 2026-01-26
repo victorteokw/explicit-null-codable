@@ -48,16 +48,27 @@ func fields(decl: StructDeclSyntax) -> [(TokenSyntax, TypeSyntax)] {
     }
 }
 
-func codingKeys(from fields: [(TokenSyntax, TypeSyntax)]) -> DeclSyntax {
+func validModifiers(decl: StructDeclSyntax) -> String {
+    var modifiers: [String] = []
+    for modifier in decl.modifiers {
+        let modifierString = "\(modifier.trimmed)"
+        if ["public", "private", "internal", "protected", "package"].contains(modifierString) {
+            modifiers.append(modifierString)
+        }
+    }
+    return modifiers.joined(separator: " ")
+}
+
+func codingKeys(from fields: [(TokenSyntax, TypeSyntax)], modifier: String) -> DeclSyntax {
     let cases = fields.map { "case \($0.0)" }.joined(separator: "\n")
     return DeclSyntax(stringLiteral: """
-        enum CodingKeys: CodingKey {
+        \(modifier) enum CodingKeys: CodingKey {
             \(cases)
         }
     """)
 }
 
-func encodeTo(from fields: [(TokenSyntax, TypeSyntax)]) -> DeclSyntax {
+func encodeTo(from fields: [(TokenSyntax, TypeSyntax)], modifier: String) -> DeclSyntax {
     let encodes = fields.map { (name, type) in
         switch OptionalLevel.match(type) {
         case .none: "try container.encode(self.\(name), forKey: .\(name))"
@@ -70,14 +81,14 @@ func encodeTo(from fields: [(TokenSyntax, TypeSyntax)]) -> DeclSyntax {
         }
     }.joined(separator: "\n")
     return DeclSyntax(stringLiteral: """
-        func encode(to encoder: any Encoder) throws {
+        \(modifier) func encode(to encoder: any Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             \(encodes)
         }    
     """)
 }
 
-func initFrom(from fields: [(TokenSyntax, TypeSyntax)]) -> DeclSyntax {
+func initFrom(from fields: [(TokenSyntax, TypeSyntax)], modifier: String) -> DeclSyntax {
     let decodes = fields.map { (name, type) in
         switch OptionalLevel.match(type) {
         case .none: "self.\(name) = try container.decode(\(type).self, forKey: .\(name))"
@@ -90,7 +101,7 @@ func initFrom(from fields: [(TokenSyntax, TypeSyntax)]) -> DeclSyntax {
         }
     }.joined(separator: "\n")
     return DeclSyntax(stringLiteral: """
-        init(from decoder: any Decoder) throws {
+        \(modifier) init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             \(decodes)
         }
@@ -130,8 +141,9 @@ public struct ExplicitNullEncodableMacro: MemberMacro, ExtensionMacro {
             return requireStruct(declaration: declaration, context: context)
         }
         let fields = fields(decl: structDecl)
-        let codingKeys = codingKeys(from: fields)
-        let encodeTo = encodeTo(from: fields)
+        let modifiers = validModifiers(decl: structDecl)
+        let codingKeys = codingKeys(from: fields, modifier: modifiers)
+        let encodeTo = encodeTo(from: fields, modifier: modifiers)
         return [codingKeys, encodeTo]
     }
 
@@ -160,8 +172,9 @@ public struct ExplicitNullDecodableMacro: MemberMacro, ExtensionMacro {
             return requireStruct(declaration: declaration, context: context)
         }
         let fields = fields(decl: structDecl)
-        let codingKeys = codingKeys(from: fields)
-        let initFrom = initFrom(from: fields)
+        let modifiers = validModifiers(decl: structDecl)
+        let codingKeys = codingKeys(from: fields, modifier: modifiers)
+        let initFrom = initFrom(from: fields, modifier: modifiers)
         return [codingKeys, initFrom]
     }
 
@@ -190,9 +203,10 @@ public struct ExplicitNullCodableMacro: MemberMacro, ExtensionMacro {
             return requireStruct(declaration: declaration, context: context)
         }
         let fields = fields(decl: structDecl)
-        let codingKeys = codingKeys(from: fields)
-        let encodeTo = encodeTo(from: fields)
-        let initFrom = initFrom(from: fields)
+        let modifiers = validModifiers(decl: structDecl)
+        let codingKeys = codingKeys(from: fields, modifier: modifiers)
+        let encodeTo = encodeTo(from: fields, modifier: modifiers)
+        let initFrom = initFrom(from: fields, modifier: modifiers)
         return [codingKeys, encodeTo, initFrom]
     }
 
